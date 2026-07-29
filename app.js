@@ -970,28 +970,41 @@
   }
 
   function createAnimal(spec, x, y, habitat) {
+    let spawnX = x;
+    let spawnY = y;
+    if (!spec.aquatic && habitat === "surface") {
+      const tileX = Math.floor(x / TILE);
+      const groundY = Math.round((y + spec.h) / TILE);
+      if (!isDrySurfaceAnimalTile(tileX, groundY, spec)) {
+        const fallback = findDrySurfaceAnimalTile(Math.max(5, tileX - 24), Math.min(WORLD_W - 5, tileX + 24), spec);
+        if (!fallback) return;
+        spawnX = fallback.x * TILE;
+        spawnY = fallback.y * TILE - spec.h;
+      }
+    }
     entities.push({
-        kind: "animal",
-        spec,
-        x,
-        y,
-        w: spec.w,
-        h: spec.h,
-        vx: Math.random() > 0.5 ? 20 : -20,
-        vy: 0,
-        hp: 2,
-        anim: Math.random() * 10,
-        grounded: false,
-        wander: Math.random() * 4,
-        facing: Math.random() > 0.5 ? 1 : -1,
-        interactCooldown: 3 + Math.random() * 4,
-        productionTimer: 24 + Math.random() * 18,
-        captured: false,
-        following: 0,
-        drownTimer: 0,
-        drownTextTimer: 0,
-        habitat,
-      });
+      kind: "animal",
+      spec,
+      x: spawnX,
+      y: spawnY,
+      w: spec.w,
+      h: spec.h,
+      vx: Math.random() > 0.5 ? 20 : -20,
+      vy: 0,
+      hp: 2,
+      anim: Math.random() * 10,
+      grounded: false,
+      wander: Math.random() * 4,
+      facing: Math.random() > 0.5 ? 1 : -1,
+      interactCooldown: 3 + Math.random() * 4,
+      productionTimer: 24 + Math.random() * 18,
+      captured: false,
+      following: 0,
+      spawnWaterSafeTimer: 2,
+      drownTimer: 0,
+      drownTextTimer: 0,
+      habitat,
+    });
   }
 
   function findDrySurfaceAnimalTile(startX, endX, spec) {
@@ -1012,6 +1025,7 @@
     if (y < 2 || maxX >= WORLD_W - 1) return false;
     const body = { x: x * TILE, y: y * TILE - spec.h, w: spec.w, h: spec.h };
     if (isBodyInWater(body)) return false;
+    if (hasWaterNearAnimalSpawn(x, y, spec)) return false;
     for (let tx = minX; tx <= maxX; tx += 1) {
       if (!isSolid(getTile(tx, y))) return false;
       if (getTile(tx, y - 1) !== BLOCKS.air || getTile(tx, y - 2) === BLOCKS.water) return false;
@@ -1024,14 +1038,38 @@
     return true;
   }
 
+  function hasWaterNearAnimalSpawn(x, y, spec) {
+    const widthTiles = Math.max(1, Math.ceil(spec.w / TILE));
+    const topY = Math.floor((y * TILE - spec.h) / TILE);
+    for (let tx = x - 2; tx <= x + widthTiles + 1; tx += 1) {
+      for (let ty = topY - 1; ty <= y + 3; ty += 1) {
+        if (getTile(tx, ty) === BLOCKS.water) return true;
+      }
+    }
+    return false;
+  }
+
   function findDryCaveAnimalTile(startX, endX, spec) {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const cave = findCaveTile(startX, endX);
       if (!cave) return null;
       const body = { x: cave.x * TILE, y: cave.y * TILE, w: spec.w, h: spec.h };
-      if (!isBodyInWater(body)) return cave;
+      if (!isBodyInWater(body) && !hasWaterNearAnimalBody(body, 2)) return cave;
     }
     return null;
+  }
+
+  function hasWaterNearAnimalBody(body, radiusTiles = 1) {
+    const minX = Math.floor(body.x / TILE) - radiusTiles;
+    const maxX = Math.floor((body.x + body.w) / TILE) + radiusTiles;
+    const minY = Math.floor(body.y / TILE) - radiusTiles;
+    const maxY = Math.floor((body.y + body.h) / TILE) + radiusTiles;
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        if (getTile(x, y) === BLOCKS.water) return true;
+      }
+    }
+    return false;
   }
 
   function spawnMonster() {
@@ -1435,7 +1473,9 @@
   function updateAnimal(entity, dt) {
     entity.interactCooldown = Math.max(0, entity.interactCooldown - dt);
     entity.following = Math.max(0, entity.following - dt);
+    entity.spawnWaterSafeTimer = Math.max(0, (entity.spawnWaterSafeTimer || 0) - dt);
     if (!entity.spec?.aquatic && isBodyInWater(entity)) {
+      if (entity.spawnWaterSafeTimer > 0 && relocateAnimalToDrySpawn(entity)) return;
       updateDrowningAnimal(entity, dt);
       return;
     }
@@ -1491,6 +1531,25 @@
       entity.vx *= -1;
       entity.facing *= -1;
     }
+  }
+
+  function relocateAnimalToDrySpawn(entity) {
+    const tileX = Math.floor((entity.x + entity.w / 2) / TILE);
+    const startX = Math.max(5, tileX - 36);
+    const endX = Math.min(WORLD_W - 5, tileX + 36);
+    const spawn =
+      entity.habitat === "underground"
+        ? findDryCaveAnimalTile(startX, endX, entity.spec)
+        : findDrySurfaceAnimalTile(startX, endX, entity.spec);
+    if (!spawn) return false;
+    entity.x = spawn.x * TILE;
+    entity.y = entity.habitat === "underground" ? spawn.y * TILE : spawn.y * TILE - entity.h;
+    entity.vx = Math.random() > 0.5 ? 16 : -16;
+    entity.vy = 0;
+    entity.grounded = false;
+    entity.drownTimer = 0;
+    entity.drownTextTimer = 0;
+    return true;
   }
 
   function updateDrowningAnimal(entity, dt) {
@@ -4328,6 +4387,8 @@
     canvas.dataset.playerX = String(Math.round(player.x));
     canvas.dataset.playerY = String(Math.round(player.y));
     canvas.dataset.entities = String(entities?.length || 0);
+    canvas.dataset.animals = String(entities?.filter((e) => e.kind === "animal").length || 0);
+    canvas.dataset.animalsInWater = String(entities?.filter((e) => e.kind === "animal" && !e.spec?.aquatic && isBodyInWater(e)).length || 0);
     canvas.dataset.projectiles = String(projectiles?.length || 0);
     canvas.dataset.weaponAction = weaponAction || "";
     canvas.dataset.weaponActionTimer = String(Number(weaponActionTimer?.toFixed?.(3) || 0));
