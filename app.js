@@ -1114,22 +1114,31 @@
   function createSafeCamp() {
     const centerX = 10;
     const baseY = surfaceY(centerX);
-    for (let x = centerX - 5; x <= centerX + 7; x += 1) {
+    const left = centerX - 8;
+    const right = centerX + 10;
+    for (let x = left; x <= right; x += 1) {
       const ground = baseY;
-      for (let y = Math.max(1, ground - 5); y < ground; y += 1) setTile(x, y, BLOCKS.air);
+      for (let y = Math.max(1, ground - 6); y < ground; y += 1) setTile(x, y, BLOCKS.air);
       setTile(x, ground, BLOCKS.grass);
-      for (let y = ground + 1; y <= Math.min(WORLD_H - 1, ground + 3); y += 1) setTile(x, y, BLOCKS.dirt);
+      for (let y = ground + 1; y <= Math.min(WORLD_H - 1, ground + 7); y += 1) setTile(x, y, BLOCKS.dirt);
+    }
+    for (let x = left - 1; x <= right + 1; x += 1) {
+      for (let y = baseY - 1; y <= Math.min(WORLD_H - 1, baseY + 8); y += 1) {
+        if (getTile(x, y) === BLOCKS.water) setTile(x, y, y <= baseY ? BLOCKS.air : BLOCKS.dirt);
+      }
     }
     setTile(centerX - 3, baseY - 1, BLOCKS.campBed);
     setTile(centerX - 2, baseY - 1, BLOCKS.campBed);
     setTile(centerX + 1, baseY - 1, BLOCKS.campLantern);
     setTile(centerX + 4, baseY - 1, BLOCKS.musicBox);
-    setTile(centerX - 5, baseY - 1, BLOCKS.fence);
-    setTile(centerX + 7, baseY - 1, BLOCKS.fence);
+    setTile(left, baseY - 1, BLOCKS.fence);
+    setTile(left + 1, baseY - 1, BLOCKS.fence);
+    setTile(right - 1, baseY - 1, BLOCKS.fence);
+    setTile(right, baseY - 1, BLOCKS.fence);
     safeCamp = {
       x: centerX,
       y: baseY,
-      radius: 6,
+      radius: 8,
       comfortTimer: 0,
       musicTimer: 0,
       healTick: 0,
@@ -1140,7 +1149,8 @@
     const chicken = { ...atlas.animals[2], type: "chicken", w: 34, h: 30 };
     const sheep = { ...atlas.animals[1], type: "sheep" };
     createAnimal(chicken, (centerX + 2) * TILE, baseY * TILE - chicken.h, "surface");
-    createAnimal(sheep, (centerX + 5) * TILE, baseY * TILE - sheep.h, "surface");
+    createAnimal(chicken, (centerX + 3) * TILE, baseY * TILE - chicken.h, "surface");
+    createAnimal(sheep, (centerX + 6) * TILE, baseY * TILE - sheep.h, "surface");
     discovered.add("safeCamp");
   }
 
@@ -4315,7 +4325,12 @@
     if (entity.spec?.aquatic) return false;
     const checkX = Math.floor((entity.x + (entity.facing > 0 ? entity.w + 8 : -8)) / TILE);
     const footY = Math.floor((entity.y + entity.h - 2) / TILE);
-    return getTile(checkX, footY) === BLOCKS.water || getTile(checkX, footY + 1) === BLOCKS.water;
+    return (
+      getTile(checkX, footY) === BLOCKS.water ||
+      getTile(checkX, footY + 1) === BLOCKS.water ||
+      getTile(checkX + entity.facing, footY + 1) === BLOCKS.water ||
+      getTile(checkX, footY + 2) === BLOCKS.water
+    );
   }
 
   function nightAmount() {
@@ -4602,6 +4617,7 @@
     addResource(item, amount, "디버그 지급");
     return true;
   };
+  window.__blockSurvivalDebugTile = (x, y) => getTile(Number(x), Number(y));
   window.__blockSurvivalDebugDrownAnimal = () => {
     if (!gameStarted || !entities?.length) return false;
     const animal = entities.find((entity) => entity.kind === "animal" && !entity.spec?.aquatic);
