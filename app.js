@@ -640,8 +640,12 @@
   let gameOver;
   let miningTarget;
   let swingTimer;
+  let weaponAction;
+  let weaponActionTimer;
   let hitCooldown;
   let shootCooldown;
+  let shotsFired;
+  let lastProjectileRemoval;
   let spawnTimer;
   let message = "낮에는 자원을 모으고, 밤에는 버티세요.";
   let frameCount = 0;
@@ -759,8 +763,12 @@
     gameOver = false;
     miningTarget = null;
     swingTimer = 0;
+    weaponAction = null;
+    weaponActionTimer = 0;
     hitCooldown = 0;
     shootCooldown = 0;
+    shotsFired = 0;
+    lastProjectileRemoval = "";
     spawnTimer = 0;
     safeCamp = null;
     message = `${playerName}, 안전 캠프에서 쉬며 천천히 시작하세요.`;
@@ -1216,6 +1224,8 @@
     hitCooldown = Math.max(0, hitCooldown - dt);
     shootCooldown = Math.max(0, shootCooldown - dt);
     swingTimer = Math.max(0, swingTimer - dt);
+    weaponActionTimer = Math.max(0, weaponActionTimer - dt);
+    if (weaponActionTimer <= 0) weaponAction = null;
     player.invuln = Math.max(0, player.invuln - dt);
     player.anim += dt;
     updateWorldEvents(dt);
@@ -1298,6 +1308,8 @@
 
     miningTarget.progress += dt * miningSpeedMultiplier();
     swingTimer = 0.22;
+    weaponAction = "mine";
+    weaponActionTimer = 0.22;
     if (miningTarget.progress >= (blockInfo[block]?.hardness || 0.5)) {
       mineBlock(tx, ty, block);
       miningTarget = null;
@@ -1797,19 +1809,25 @@
       projectile.x += projectile.vx * dt;
       projectile.y += projectile.vy * dt;
       projectile.vy += (projectile.owner === "player" ? 90 : 0) * dt;
+      projectile.terrainGrace = Math.max(0, (projectile.terrainGrace || 0) - dt);
       projectile.life -= dt;
       if (projectile.owner === "player") {
         updatePlayerArrow(projectile);
       } else if (aabb(projectile, player)) {
         hurtPlayer(projectile.damage || 1);
+        projectile.removalReason = "player";
         projectile.life = 0;
       }
       const tx = Math.floor((projectile.x + projectile.w / 2) / TILE);
       const ty = Math.floor((projectile.y + projectile.h / 2) / TILE);
-      if (inBounds(tx, ty) && isSolid(getTile(tx, ty))) {
+      if (projectile.terrainGrace <= 0 && inBounds(tx, ty) && isSolid(getTile(tx, ty))) {
         if (projectile.owner === "player" && projectile.type === "fire") fireArrowBurst(projectile.x, projectile.y);
+        projectile.removalReason = "terrain";
         projectile.life = 0;
       }
+    }
+    for (const projectile of projectiles) {
+      if (projectile.life <= 0 && projectile.removalReason) lastProjectileRemoval = projectile.removalReason;
     }
     projectiles = projectiles.filter((p) => p.life > 0);
   }
@@ -1829,6 +1847,7 @@
       if (projectile.pierce > 0) {
         projectile.pierce -= 1;
       } else {
+        projectile.removalReason = `hit:${entity.kind}`;
         projectile.life = 0;
       }
       return;
@@ -1921,6 +1940,8 @@
     if (hitCooldown > 0 || gameOver) return;
     hitCooldown = 0.28;
     swingTimer = 0.28;
+    weaponAction = "melee";
+    weaponActionTimer = 0.28;
     const weapon = equipped?.weapon ? gearCatalog[equipped.weapon] : null;
     const meleeBonus = weapon && !weapon.ranged ? weapon.damage || 0 : 0;
     const reachBonus = weapon && !weapon.ranged ? weapon.reach || 0 : 0;
@@ -1997,15 +2018,22 @@
     const dir = player.facing >= 0 ? 1 : -1;
     const damage = arrow.damage + (weapon.damage || 0) + (relics?.has("stormSeal") && gameTime >= 0.5 ? 1 : 0);
     shootCooldown = equipped.weapon === "ironBow" ? 0.42 : 0.52;
-    swingTimer = 0.18;
-    bowReleaseBurst(equipped.weapon, player.x + player.w / 2 + dir * 22, player.y + 23, arrow);
+    weaponAction = "ranged";
+    weaponActionTimer = 0.2;
+    const bowX = player.x + (dir > 0 ? player.w + 4 : -4);
+    const bowY = player.y + 27;
+    const projectileW = arrowType === "crystal" ? 26 : 24;
+    const projectileH = 5;
+    const projectileCenterX = bowX + dir * 26;
+    shotsFired += 1;
+    bowReleaseBurst(equipped.weapon, bowX + dir * 8, bowY - 1, arrow);
     projectiles.push({
       owner: "player",
       type: arrowType,
-      x: player.x + player.w / 2 + dir * 18,
-      y: player.y + 21,
-      w: 22,
-      h: 5,
+      x: projectileCenterX - projectileW / 2,
+      y: bowY - projectileH / 2,
+      w: projectileW,
+      h: projectileH,
       vx: dir * (arrow.speed + bowSpeedBonus),
       vy: player.inWater ? -18 : -28,
       damage,
@@ -2015,10 +2043,11 @@
       color: arrow.color,
       trail: arrow.trail,
       burn: arrow.burn,
+      terrainGrace: 0.09,
       hitIds: new Set(),
     });
     message = `${arrow.name} 발사`;
-    burst(player.x + player.w / 2 + dir * 20, player.y + 23, arrow.trail, 4);
+    burst(bowX + dir * 8, bowY - 1, arrow.trail, 4);
   }
 
   function useEquippedWeapon() {
@@ -2371,10 +2400,13 @@
     let frames = atlas.player.idle;
     let pose = "idle";
     if (player.invuln > 0 && Math.floor(player.invuln * 16) % 2 === 0) frames = atlas.player.hurt;
-    else if (swingTimer > 0 && hitCooldown > 0) {
+    else if (weaponAction === "melee" && weaponActionTimer > 0) {
       frames = atlas.player.attack;
       pose = "wide";
-    } else if (swingTimer > 0) {
+    } else if (weaponAction === "ranged" && weaponActionTimer > 0) {
+      frames = atlas.player.attack;
+      pose = "ranged";
+    } else if (weaponAction === "mine" && weaponActionTimer > 0) {
       frames = atlas.player.mine;
       pose = "wide";
     } else if (!player.grounded) {
@@ -2391,7 +2423,8 @@
     const drawH = frame[3] * scale;
     const bodyCenterX = player.x + player.w / 2;
     const footY = player.y + player.h + 2;
-    const pivot = pose === "wide" ? (player.facing > 0 ? 0.33 : 0.67) : 0.5;
+    const pivot =
+      pose === "wide" ? (player.facing > 0 ? 0.33 : 0.67) : pose === "ranged" ? (player.facing > 0 ? 0.4 : 0.6) : 0.5;
     drawSprite(assets.player, frame, bodyCenterX - drawW * pivot, footY - drawH, drawW, drawH, player.facing);
     drawPlayerGearOverlay();
   }
@@ -2422,7 +2455,7 @@
     const weapon = equipped.weapon ? gearCatalog[equipped.weapon] : null;
     if (weapon?.ranged) drawEquippedBow(x, y);
     else if (weapon) drawEquippedMeleeWeapon(x, y);
-    if (swingTimer > 0) drawWeaponTrail();
+    if (weaponAction === "melee" && weaponActionTimer > 0) drawWeaponTrail();
   }
 
   function drawEquippedArmor(x, y) {
@@ -2446,22 +2479,42 @@
 
   function drawEquippedBow(x, y) {
     const visual = weaponVisuals[equipped.weapon] || weaponVisuals.huntingBow;
-    const handX = x + (player.facing > 0 ? player.w + 1 : -5);
+    const dir = player.facing >= 0 ? 1 : -1;
+    const handX = x + (dir > 0 ? player.w + 4 : -4);
+    const handY = y + 27;
+    const drawing = weaponAction === "ranged" && weaponActionTimer > 0;
+    const arrow = arrowCatalog[equipped.arrow || "wood"] || arrowCatalog.wood;
     ctx.save();
+    ctx.translate(handX, handY);
+    ctx.scale(dir, 1);
     ctx.strokeStyle = visual.blade;
     ctx.lineWidth = equipped.weapon === "ironBow" ? 4 : 3;
     ctx.beginPath();
-    ctx.arc(handX, y + 27, 13, -1.1, 1.1, player.facing < 0);
+    ctx.arc(0, 0, 13, -1.1, 1.1);
     ctx.stroke();
     ctx.strokeStyle = "rgba(238,245,255,0.78)";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(handX, y + 15);
-    ctx.lineTo(handX, y + 39);
+    ctx.moveTo(-1, -12);
+    ctx.lineTo(drawing ? -13 : 0, 0);
+    ctx.lineTo(-1, 12);
     ctx.stroke();
+    if (drawing) {
+      ctx.fillStyle = arrow.color;
+      ctx.fillRect(-15, -2, 31, 4);
+      ctx.fillStyle = arrow.trail;
+      ctx.fillRect(-17, -3, 7, 2);
+      ctx.fillRect(-17, 1, 7, 2);
+      ctx.beginPath();
+      ctx.moveTo(21, 0);
+      ctx.lineTo(14, -5);
+      ctx.lineTo(14, 5);
+      ctx.closePath();
+      ctx.fill();
+    }
     if (equipped.weapon === "ironBow") {
       ctx.fillStyle = "rgba(128,216,255,0.55)";
-      ctx.fillRect(handX - 2, y + 24, 4, 6);
+      ctx.fillRect(-2, -3, 4, 6);
     }
     ctx.restore();
   }
@@ -2472,11 +2525,11 @@
     const dir = player.facing;
     const handX = x + (dir > 0 ? player.w + 1 : -1);
     const handY = y + 27;
-    const active = swingTimer > 0 && hitCooldown > 0;
+    const active = weaponAction === "melee" && weaponActionTimer > 0;
     ctx.save();
     ctx.translate(handX, handY);
     ctx.scale(dir, 1);
-    ctx.rotate(active ? -0.95 + swingTimer * 4.2 : -0.55);
+    ctx.rotate(active ? -0.95 + weaponActionTimer * 4.2 : -0.55);
     if (visual.spear) {
       ctx.fillStyle = "#8b5a2b";
       ctx.fillRect(0, -2, visual.length, 4);
@@ -2506,7 +2559,7 @@
     const id = equipped.weapon;
     const visual = weaponVisuals[id];
     if (!visual || visual.bow) return;
-    const progress = clamp(swingTimer / 0.28, 0, 1);
+    const progress = clamp(weaponActionTimer / 0.28, 0, 1);
     const cx = player.x + player.w / 2 + player.facing * 28;
     const cy = player.y + 30;
     ctx.save();
@@ -3219,8 +3272,12 @@
     gameOver = false;
     miningTarget = null;
     swingTimer = 0;
+    weaponAction = null;
+    weaponActionTimer = 0;
     hitCooldown = 0;
     shootCooldown = 0;
+    shotsFired = 0;
+    lastProjectileRemoval = "";
     spawnTimer = 0;
     if (!safeCamp) ensureSafeCampForLoadedWorld();
     gameStarted = true;
@@ -4271,6 +4328,12 @@
     canvas.dataset.playerX = String(Math.round(player.x));
     canvas.dataset.playerY = String(Math.round(player.y));
     canvas.dataset.entities = String(entities?.length || 0);
+    canvas.dataset.projectiles = String(projectiles?.length || 0);
+    canvas.dataset.weaponAction = weaponAction || "";
+    canvas.dataset.weaponActionTimer = String(Number(weaponActionTimer?.toFixed?.(3) || 0));
+    canvas.dataset.equippedWeapon = equipped?.weapon || "";
+    canvas.dataset.shotsFired = String(shotsFired || 0);
+    canvas.dataset.lastProjectileRemoval = lastProjectileRemoval || "";
   }
 
   function inBounds(x, y) {
@@ -4600,6 +4663,10 @@
       animalsInWater: entities?.filter((e) => e.kind === "animal" && !e.spec?.aquatic && isBodyInWater(e)).length || 0,
       animalCount: entities?.filter((e) => e.kind === "animal").length || 0,
       projectileCount: projectiles?.length || 0,
+      weaponAction,
+      weaponActionTimer: Number(weaponActionTimer?.toFixed?.(3) || 0),
+      shotsFired,
+      lastProjectileRemoval,
       inventoryBurstCount: inventoryBursts?.length || 0,
       resourcePulseCount: resourcePulse ? Object.keys(resourcePulse).length : 0,
       questCount: completedQuests?.size || 0,
