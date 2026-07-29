@@ -1,0 +1,15 @@
+{
+  "name": "block-survival-camp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "vercel dev",
+    "check": "node --check app.js"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0"
+  },
+  "devDependencies": {
+    "vercel": "^46.0.0"
+  }
+}

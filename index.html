@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>개척대: 블록 생존</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css?v=40" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="game-panel" aria-label="개척대 블록 생존 게임">
+        <canvas id="game" width="1280" height="720"></canvas>
+        <div id="loading" class="loading">월드를 여는 중...</div>
+        <div class="hud top-left">
+          <strong id="dayLabel">Day 1</strong>
+          <span id="timeLabel">낮</span>
+        </div>
+        <div class="phase-meter" aria-label="낮과 밤 진행상황">
+          <div class="phase-copy">
+            <strong id="phaseTitle">낮 진행 중</strong>
+            <span id="phaseRemaining">05:00 남음</span>
+          </div>
+          <div class="phase-track"><span id="phaseFill"></span></div>
+        </div>
+        <div class="hud top-right">
+          <span id="healthLabel">♥♥♥♥♥</span>
+          <span id="statusLabel">안전</span>
+        </div>
+        <div id="resourceBar" class="resource-bar" aria-label="획득 자원"></div>
+        <div id="questTracker" class="quest-tracker" aria-live="polite"></div>
+        <div id="eventBanner" class="event-banner hidden" aria-live="polite"></div>
+        <div class="quick-actions" aria-label="게임 메뉴">
+          <button id="openCraft" type="button">제작대</button>
+          <button id="openGear" type="button">장비</button>
+          <button id="openRecipes" type="button">조합</button>
+          <button id="openCodex" type="button">도감</button>
+          <button id="openSave" type="button">저장</button>
+        </div>
+        <div id="hotbar" class="hotbar" aria-label="인벤토리"></div>
+        <div class="touch-controls" aria-label="터치 조작">
+          <div class="touch-cluster move-controls">
+            <button type="button" data-touch-control="left" aria-label="왼쪽으로 이동">←</button>
+            <button type="button" data-touch-control="right" aria-label="오른쪽으로 이동">→</button>
+            <button type="button" data-touch-control="jump" aria-label="점프">점프</button>
+          </div>
+          <div class="touch-cluster action-controls">
+            <button type="button" data-touch-action="mine" aria-label="앞 블록 채굴">채굴</button>
+            <button type="button" data-touch-action="place" aria-label="앞에 블록 설치">설치</button>
+            <button type="button" data-touch-action="interact" aria-label="동물과 상호작용">상호작용</button>
+            <button type="button" data-touch-action="attack" aria-label="현재 무기 사용">공격</button>
+          </div>
+        </div>
+        <button id="restart" class="restart" type="button">다시 시작</button>
+        <div id="difficultyScreen" class="difficulty-screen">
+          <section>
+            <h2>개척자 등록</h2>
+            <p>이름과 난이도를 정하면 탐험 기록과 주요 메시지에 이름이 표시됩니다.</p>
+            <label class="name-field" for="playerNameInput">
+              <span>이름</span>
+              <input id="playerNameInput" type="text" maxlength="12" autocomplete="off" placeholder="개척자" />
+            </label>
+            <div class="difficulty-options">
+              <button type="button" data-difficulty="easy">
+                <strong>평온</strong>
+                <span>건설과 탐험 중심</span>
+              </button>
+              <button type="button" data-difficulty="normal">
+                <strong>개척</strong>
+                <span>표준 생존 밸런스</span>
+              </button>
+              <button type="button" data-difficulty="hard">
+                <strong>악몽</strong>
+                <span>매일 밤 강하게 압박</span>
+              </button>
+            </div>
+            <div id="saveChoices" class="save-choices hidden" aria-live="polite"></div>
+          </section>
+        </div>
+        <div id="sidePanel" class="side-panel hidden" aria-live="polite">
+          <header>
+            <h2 id="sidePanelTitle">패널</h2>
+            <button id="closePanel" type="button" aria-label="닫기">×</button>
+          </header>
+          <div id="sidePanelBody"></div>
+        </div>
+      </section>
+
+      <aside class="brief">
+        <h1>개척대: 블록 생존</h1>
+        <p>
+          낮에는 자원을 캐고 길을 만들고, 밤에는 몬스터를 피해 살아남는 작은
+          2D 샌드박스 게임입니다.
+        </p>
+        <dl>
+          <div><dt>이동</dt><dd>A/D 또는 방향키</dd></div>
+          <div><dt>점프</dt><dd>Space / W / ↑</dd></div>
+          <div><dt>채굴</dt><dd>마우스 왼쪽 클릭</dd></div>
+          <div><dt>설치</dt><dd>마우스 오른쪽 클릭</dd></div>
+          <div><dt>상호작용</dt><dd>E 또는 터치 상호작용</dd></div>
+          <div><dt>공격</dt><dd>F 또는 터치 공격. 활 장착 시 화살 발사</dd></div>
+          <div><dt>보물</dt><dd>상자 근처에서 E 또는 상호작용</dd></div>
+          <div><dt>선택</dt><dd>숫자 1-9</dd></div>
+          <div><dt>목표</dt><dd>좌측 HUD의 메인/미니 퀘스트 완료</dd></div>
+        </dl>
+      </aside>
+    </main>
+    <script src="./app.js?v=40"></script>
+  </body>
+</html>
